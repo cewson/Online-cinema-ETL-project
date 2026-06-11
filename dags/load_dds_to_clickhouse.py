@@ -20,7 +20,7 @@ MART_QUERIES = {
             fe.event_id,
             fe.session_id,
             COALESCE(fe.event_type, ''),
-            fe.event_time,
+            fe.event_date,
             COALESCE(fe.event_details::text, ''),
             fs.user_id,
             COALESCE(du.email, ''),
@@ -82,7 +82,7 @@ MART_QUERIES = {
             COALESCE(string_agg(DISTINCT g.genre_name, ', '), ''),
             COUNT(fe.event_id)::int,
             COUNT(DISTINCT fs.user_id)::int,
-            COUNT(DISTINCT CASE WHEN fe.event_type = 'play' THEN fe.event_id END)::int
+            COUNT(DISTINCT CASE WHEN fe.event_type = 'content_view_started' THEN fe.event_id END)::int
         FROM dds.dim_content dc
         LEFT JOIN dds.fact_events fe ON fe.content_id = dc.content_id
         LEFT JOIN dds.fact_sessions fs ON fe.session_id = fs.session_id
@@ -105,7 +105,7 @@ MART_QUERIES = {
 }
 
 
-def _get_clickhouse_client() -> Client:
+def get_clickhouse_client() -> Client:
     return Client(
         host=os.getenv("CLICKHOUSE_HOST", "clickhouse"),
         port=int(os.getenv("CLICKHOUSE_PORT", "9000")),
@@ -115,7 +115,7 @@ def _get_clickhouse_client() -> Client:
     )
 
 
-def _null_default(col_type):
+def null_default(col_type):
     if col_type in (int,):
         return 0
     if col_type in (float, Decimal):
@@ -127,40 +127,58 @@ def _null_default(col_type):
     return ""
 
 
-def _sanitize_rows(rows):
+def sanitize_rows(rows):
     if not rows:
         return rows
 
-    col_types = [None] * len(rows[0])
+    # 1. Сначала найдем типы для всех колонок, пропуская None
+    num_cols = len(rows[0])
+    col_types = [None] * num_cols
+    
     for row in rows:
-        for i, value in enumerate(row):
-            if value is not None and col_types[i] is None:
-                col_types[i] = type(value)
+        for i in range(num_cols):
+            if row[i] is not None and col_types[i] is None:
+                col_types[i] = type(row[i])
+    
+    # Если для колонки тип так и не нашелся (все None), задаем дефолт
+    for i in range(num_cols):
+        if col_types[i] is None:
+            col_types[i] = str  # Или другой тип по умолчанию
 
-    return [
-        tuple(
-            value if value is not None else _null_default(col_types[i])
-            for i, value in enumerate(row)
-        )
-        for row in rows
-    ]
+    # 2. Обработка значений
+    sanitized = []
+    for row in rows:
+        new_row = []
+        for i in range(num_cols):
+            val = row[i]
+            if val is None:
+                new_row.append(null_default(col_types[i]))
+            else:
+                # ВАЖНО: убедимся, что datetime не содержит часового пояса, 
+                # если ClickHouse настроен на локальное время, или приведем к нужному формату
+                if isinstance(val, datetime):
+                    # Если нужно убрать tzinfo (наивный datetime), используйте:
+                    val = val.replace(tzinfo=None)
+                new_row.append(val)
+        sanitized.append(tuple(new_row))
+    return sanitized
 
 
 def reload_mart(table_name: str):
     pg_hook = PostgresHook(postgres_conn_id="warehouse_default")
-    rows = _sanitize_rows(pg_hook.get_records(MART_QUERIES[table_name]))
-    client = _get_clickhouse_client()
+    rows = sanitize_rows(pg_hook.get_records(MART_QUERIES[table_name]))
+    client = get_clickhouse_client()
     client.execute(f"TRUNCATE TABLE dm.{table_name}")
     if rows:
         client.execute(f"INSERT INTO dm.{table_name} VALUES", rows)
-    logger.info("Reloaded dm.%s: %s rows", table_name, len(rows))
+    logger.info("Пересчитано dm.%s: %s rows", table_name, len(rows))
 
 
 def rebuild_all_marts():
     try:
         for table_name in MART_QUERIES:
             reload_mart(table_name)
-        alert_telegram(f"✓ load_dds_to_clickhouse: пересчитано {len(MART_QUERIES)} витрин")
+        alert_telegram(f"✓ load_dds_to_clickhouse: пересчитано {len(MART_QUERIES)} витрин", True)
     except Exception as exc:
         alert_telegram(f"✗ load_dds_to_clickhouse: {exc}")
         raise

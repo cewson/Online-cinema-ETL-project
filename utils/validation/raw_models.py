@@ -54,7 +54,6 @@ class RawEvent(BaseModel):
     event_id: UUID4
     # Делаем event_type опциональным, так как он отсутствует в некоторых файлах
     event_type: Optional[str] = "unknown" 
-    event_time: datetime
     event_date: str
     event_details: Optional[Dict[str, Any]] = None
     # Оборачиваем в Optional, чтобы модель не падала при совсем кривых данных

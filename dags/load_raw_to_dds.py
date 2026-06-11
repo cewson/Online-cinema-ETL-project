@@ -5,7 +5,7 @@ from airflow.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from datetime import datetime, timedelta
 
-from utils.datasets import RAW_UPDATED, DDS_UPDATED
+from utils.datasets import DDS_UPDATED
 from utils.dds_loader import DdsLoader
 from utils.tg_alert import alert_telegram
 
@@ -19,7 +19,7 @@ def transform_to_dds():
     loader = DdsLoader(cursor)
 
     try:
-        rows = loader.fetch_raw_events(limit=200)
+        rows = loader.fetch_raw_events(limit=1000)
         total = len(rows)
         processed_count = 0
         failed_count = 0
@@ -35,7 +35,7 @@ def transform_to_dds():
         if processed_count > 0 or failed_count > 0:
             alert_telegram(
                 f"✓ load_raw_to_dds: обработано {processed_count}, "
-                f"ошибок {failed_count} из {total}"
+                f"ошибок {failed_count} из {total}", True
             )
         return processed_count
 
@@ -60,6 +60,7 @@ def dds_has_new_data(**context):
 
 def mark_dds_updated():
     logger.info("Dataset DDS_UPDATED опубликован — запустится load_dds_to_clickhouse")
+    # Airflow сам публикует Dataset через outlets — ничего делать не нужно
 
 
 default_args = {
@@ -72,7 +73,7 @@ with DAG(
     dag_id="load_raw_to_dds",
     default_args=default_args,
     description="Загрузка данных из RAW в DDS PostgreSQL",
-    schedule=[RAW_UPDATED],
+    schedule="*/1 * * * *",
     start_date=datetime(2026, 6, 8),
     catchup=False,
     tags=["dds", "raw", "postgresql"],
@@ -91,7 +92,8 @@ with DAG(
     publish_dds_dataset = PythonOperator(
         task_id="publish_dds_dataset",
         python_callable=mark_dds_updated,
-        outlets=[DDS_UPDATED],
+        outlets=[DDS_UPDATED],  
     )
+    
+    task_process >> check_dds_updated >> publish_dds_dataset 
 
-    task_process >> check_dds_updated >> publish_dds_dataset

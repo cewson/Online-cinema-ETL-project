@@ -47,7 +47,7 @@ class DdsFactEvent(BaseModel):
     session_id: UUID4
     content_id: int
     event_type: str
-    event_time: datetime
+    event_date: str
     event_details: Optional[dict]
 
 class DdsSubscriptionChange(BaseModel):

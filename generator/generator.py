@@ -14,7 +14,6 @@ from faker import Faker
 from minio import Minio
 from utils.tg_alert import alert_telegram
 import signal
-
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] %(levelname)s - %(message)s'
@@ -125,9 +124,9 @@ def get_device_info():
         "os": choice(["Tizen", "Android", "iOS", "Windows", "macOS"]),
         "model": choice(DEVICE_MODELS[device_type]),
         "location": {
-            "country": "Беларусь",
-            "city": fake.city(),
-            "timezone": "Europe/Minsk"
+            "country": fake.country_code(),
+            "city": fake.city_name(),
+            "timezone": "Europe/Moscow"
         }
     }
 
@@ -146,8 +145,7 @@ def generate_event():
     return {
         "event_id": str(uuid4()),
         "event_type": event_type,
-        "event_time": now.isoformat(),
-        "event_date": now.strftime("%Y-%m-%d"),
+        "event_date": f"2026-06-{randint(1, 30)}",
         "event_details": details,
         "user": {
             "user_id": user["user_id"],
@@ -222,7 +220,7 @@ def main():
         except Exception as e:
             logging.error(e)
 
-        time.sleep(1)
+        time.sleep(0.5)
 
 if __name__ == "__main__":
 

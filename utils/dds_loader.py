@@ -155,12 +155,12 @@ class DdsLoader:
                 session.get("session_id"),
                 content.content_id,
                 event.get("event_type", "unknown"),
-                event.get("event_time"),
+                event.get("event_date"),
                 json.dumps(event.get("event_details") or {}),
             ),
         )
 
-    def insert_subscription_change(self, user_id, subscription, event_time):
+    def insert_subscription_change(self, user_id, subscription, event_date):
         new_status = subscription.get("status", "none")
 
         self.cursor.execute(
@@ -183,7 +183,7 @@ class DdsLoader:
                 (user_id, old_status, new_status, changed_at)
                 VALUES (%s, %s, %s, %s)
                 """,
-                (user_id, old_status, new_status, event_time),
+                (user_id, old_status, new_status, event_date),
             )
 
     def process_event(self, event_id, data) -> bool:
@@ -209,7 +209,7 @@ class DdsLoader:
             self.insert_genres(content.content_id, content_data.get("genre", []))
             self.insert_fact_tables(data, session, content, user, loc, device)
             self.insert_subscription_change(
-                str(user.user_id), subscription, data.get("event_time")
+                str(user.user_id), subscription, data.get("event_date")
             )
             self.mark_processed(event_id)
             return True

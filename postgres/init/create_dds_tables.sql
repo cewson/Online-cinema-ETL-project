@@ -56,8 +56,8 @@ CREATE TABLE dds.fact_events (
     event_id UUID PRIMARY KEY,
     session_id UUID REFERENCES dds.fact_sessions(session_id),
     content_id INT REFERENCES dds.dim_content(content_id),
-    event_type VARCHAR(50),
-    event_time TIMESTAMP,
+    event_type VARCHAR(20),
+    event_date VARCHAR(20),
     event_details JSONB
 );
 

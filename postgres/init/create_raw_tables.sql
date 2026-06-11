@@ -4,7 +4,7 @@ CREATE SCHEMA IF NOT EXISTS raw;
 CREATE TABLE IF NOT EXISTS raw.events (
     id SERIAL PRIMARY KEY,
     event_id UUID NOT NULL,
-    event_date DATE NOT NULL,
+    event_date TEXT NOT NULL,
     data JSONB NOT NULL,
     loaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     is_processed BOOLEAN DEFAULT FALSE

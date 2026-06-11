@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS dm.mart_events (
     event_id UUID,
     session_id UUID,
     event_type String,
-    event_time DateTime,
+    event_date String,
     event_details String,
     user_id UUID,
     user_email String,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS dm.mart_events (
     campaign_name String,
     marketing_source String
 ) ENGINE = MergeTree()
-ORDER BY (event_time, event_id);
+ORDER BY (event_date, event_id);
 
 CREATE TABLE IF NOT EXISTS dm.mart_sessions (
     session_id UUID,
