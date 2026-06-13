@@ -231,24 +231,9 @@ docker compose up -d --build
 - `load_raw_to_dds`
 - `load_dds_to_clickhouse`
 
-### DAG'и
-
-| DAG | Расписание | Описание |
-|-----|------------|----------|
-| `load_minio_to_raw` | каждую минуту | Читает JSON из MinIO, валидирует `RawEvent`, пишет в `raw.events` |
-| `load_raw_to_dds` | каждую минуту | Трансформирует `raw.events` → `dds.*`, публикует Dataset `DDS_UPDATED` |
-| `load_dds_to_clickhouse` | по Dataset | Пересчитывает витрины `dm.*` в ClickHouse |
-
 ```
 load_minio_to_raw → load_raw_to_dds → [DDS_UPDATED] → load_dds_to_clickhouse
 ```
-
-### Валидация данных
-
-| Этап | Модель | Ошибки в `events_invalid` |
-|------|--------|---------------------------|
-| minio → raw | `RawEvent` | `[RAW] ...` |
-| raw → dds | `DdsInboundEvent` | `[DDS] ...` |
 
 ### Витрины ClickHouse (`dm.*`)
 
@@ -258,13 +243,3 @@ load_minio_to_raw → load_raw_to_dds → [DDS_UPDATED] → load_dds_to_clickhou
 | `dm.mart_sessions` | Агрегация событий по сессиям |
 | `dm.mart_content_performance` | Метрики просмотров по фильмам |
 | `dm.mart_subscription_changes` | История смен статуса подписки |
-
-### Сервисы и порты
-
-| Сервис | URL / порт |
-|--------|------------|
-| Airflow | http://localhost:8080 |
-| Metabase | http://localhost:3000 |
-| MinIO Console | http://localhost:9001 |
-| ClickHouse HTTP | http://localhost:8123 |
-| Warehouse PostgreSQL | localhost:55432 |
