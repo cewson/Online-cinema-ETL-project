@@ -51,7 +51,7 @@ def transform_to_dds() -> int:
         if processed_count > 0 or failed_count > 0:
             alert_telegram(
                 f"✓ load_raw_to_dds: обработано {processed_count}, "
-                f"DDS-валидация: {failed_count} из {total}", True
+                f"ошибок валидации: {failed_count} из {total}", True
             )
         return processed_count
 

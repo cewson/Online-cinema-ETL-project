@@ -12,7 +12,7 @@ Pydantic-модели для слоя DDS (Detail Data Store).
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field, UUID4, field_validator, model_validator
 
@@ -171,7 +171,7 @@ class DdsInboundContent(BaseModel):
 
     content_id: int
     title: str
-    genre: list[str]
+    genre: List[str]
     director: str
     release_year: int
     duration_sec: int = Field(gt=0)
@@ -190,7 +190,7 @@ class DdsInboundContent(BaseModel):
 
     @field_validator("genre")
     @classmethod
-    def validate_genres(cls, value: list[str]) -> list[str]:
+    def validate_genres(cls, value: List[str]) -> List[str]:
         for genre in value:
             if not str(genre).strip():
                 raise ValueError("genre must not contain empty values")
@@ -226,7 +226,7 @@ class DdsInboundEvent(BaseModel):
     event_id: UUID4
     event_type: str = Field(default="unknown", max_length=MAX_EVENT_TYPE_LEN)
     event_date: str
-    event_details: Optional[dict[str, Any]] = None
+    event_details: Optional[Dict[str, Any]] = None
     user: DdsInboundUser
     session: DdsInboundSession
     content: DdsInboundContent
@@ -234,7 +234,7 @@ class DdsInboundEvent(BaseModel):
 
     def to_dim_models(
         self,
-    ) -> tuple[DdsMarketing, DdsDevice, DdsLocation, DdsContent, DdsUser]:
+    ) -> Tuple[DdsMarketing, DdsDevice, DdsLocation, DdsContent, DdsUser]:
         """
         Преобразует валидированное событие в модели измерений DDS.
 
