@@ -1,3 +1,14 @@
+"""
+DAG для трансформации данных из слоя RAW в слой DDS.
+
+Этот процесс выполняет:
+1. Выбор необработанных событий из таблицы raw.events.
+2. Бизнес-валидацию и трансформацию в DDS через DdsLoader + validate_for_dds (dds_models).
+3. Запись измерений (dim_*) и фактов (fact_*) в схему dds PostgreSQL.
+4. Отклонение DDS-невалидных событий в raw.events_invalid с меткой [DDS].
+5. Публикацию Dataset DDS_UPDATED для запуска load_dds_to_clickhouse.
+6. Уведомление о результатах в Telegram.
+"""
 import logging
 
 from airflow import DAG
@@ -9,10 +20,15 @@ from utils.datasets import DDS_UPDATED
 from utils.dds_loader import DdsLoader
 from utils.tg_alert import alert_telegram
 
-logger = logging.getLogger("airflow.task")
+logger = logging.getLogger(__name__)
 
+def transform_to_dds() -> int:
+    """
+    Трансформирует сырые события в структурированные сущности DDS.
 
-def transform_to_dds():
+    :return: Количество успешно обработанных событий.
+    :raises Exception: Если произошла ошибка БД или обработки.
+    """
     pg_hook = PostgresHook(postgres_conn_id="warehouse_default")
     conn = pg_hook.get_conn()
     cursor = conn.cursor()
@@ -35,7 +51,7 @@ def transform_to_dds():
         if processed_count > 0 or failed_count > 0:
             alert_telegram(
                 f"✓ load_raw_to_dds: обработано {processed_count}, "
-                f"ошибок {failed_count} из {total}", True
+                f"DDS-валидация: {failed_count} из {total}", True
             )
         return processed_count
 
@@ -49,18 +65,26 @@ def transform_to_dds():
         conn.close()
 
 
-def dds_has_new_data(**context):
+def dds_has_new_data(**context) -> bool:
+    """
+    Функция проверяет, были ли обновлены данные в DDS.
+
+    :param context: Контекст Airflow (используется для получения XCom).
+    :return: True, если данные были обновлены, иначе False.
+    """
     processed_count = context["ti"].xcom_pull(task_ids="process_data")
     if processed_count and processed_count > 0:
-        logger.info("DDS обновлён (%s событий), публикуем Dataset", processed_count)
+        logger.info("DDS обновлён (%s событий), публикуется Dataset", processed_count)
         return True
-    logger.info("DDS не изменился, пропускаем триггер витрин")
+    logger.info("DDS не изменился, пропускаем load_dds_to_clickhouse")
     return False
 
 
 def mark_dds_updated():
+    """
+    Финальная задача, помечающая, что слой DDS был обновлен.
+    """
     logger.info("Dataset DDS_UPDATED опубликован — запустится load_dds_to_clickhouse")
-    # Airflow сам публикует Dataset через outlets — ничего делать не нужно
 
 
 default_args = {

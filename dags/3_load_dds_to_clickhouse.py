@@ -1,3 +1,12 @@
+"""
+DAG для пересчёта витрин данных в ClickHouse на основе слоя DDS в PostgreSQL.
+
+Этот процесс:
+1. Выполняет агрегацию и объединение данных в PostgreSQL (DDS).
+2. Очищает (TRUNCATE) существующие таблицы в схеме 'dm' в ClickHouse.
+3. Загружает свежие данные, выполняя приведение типов и обработку NULL-значений.
+4. Запускается автоматически при получении Dataset 'DDS_UPDATED'.
+"""
 import logging
 import os
 import uuid
@@ -12,8 +21,11 @@ from clickhouse_driver import Client
 from utils.datasets import DDS_UPDATED
 from utils.tg_alert import alert_telegram
 
-logger = logging.getLogger("airflow.task")
+logger = logging.getLogger(__name__)
 
+# SQL-запросы для формирования витрин (Data Marts).
+# Источник: DDS PostgreSQL → ClickHouse dm.*
+# Каждый ключ соответствует таблице в clickhouse/init/create_clickhouse_marts.sql
 MART_QUERIES = {
     "mart_events": """
         SELECT
@@ -106,16 +118,24 @@ MART_QUERIES = {
 
 
 def get_clickhouse_client() -> Client:
+    """Инициализирует клиент для подключения к ClickHouse."""
     return Client(
-        host=os.getenv("CLICKHOUSE_HOST", "clickhouse"),
-        port=int(os.getenv("CLICKHOUSE_PORT", "9000")),
-        user=os.getenv("CLICKHOUSE_USER", "default"),
-        password=os.getenv("CLICKHOUSE_PASSWORD", "clickhouse"),
-        database=os.getenv("CLICKHOUSE_DB", "default"),
+        host=os.getenv("CLICKHOUSE_HOST"),
+        port=int(os.getenv("CLICKHOUSE_PORT")),
+        user=os.getenv("CLICKHOUSE_USER"),
+        password=os.getenv("CLICKHOUSE_PASSWORD"),
+        database=os.getenv("CLICKHOUSE_DB"),
     )
 
 
 def null_default(col_type):
+    """
+    Возвращает дефолтное значение для заданного типа данных Python, 
+    используемое при замене NULL-значений из базы данных.
+
+    :param col_type: Python-тип столбца, полученный при анализе данных.
+    :return: Безопасное дефолтное значение, соответствующее 'col_type'.
+    """
     if col_type in (int,):
         return 0
     if col_type in (float, Decimal):
@@ -128,10 +148,15 @@ def null_default(col_type):
 
 
 def sanitize_rows(rows):
+    """
+    Нормализует данные из Postgres перед загрузкой в ClickHouse.
+    
+    :param rows: Список кортежей из PostgreSQL.
+    :return: Список нормализованных кортежей для ClickHouse.
+    """
     if not rows:
         return rows
 
-    # 1. Сначала найдем типы для всех колонок, пропуская None
     num_cols = len(rows[0])
     col_types = [None] * num_cols
     
@@ -139,13 +164,11 @@ def sanitize_rows(rows):
         for i in range(num_cols):
             if row[i] is not None and col_types[i] is None:
                 col_types[i] = type(row[i])
-    
-    # Если для колонки тип так и не нашелся (все None), задаем дефолт
+
     for i in range(num_cols):
         if col_types[i] is None:
-            col_types[i] = str  # Или другой тип по умолчанию
+            col_types[i] = str  
 
-    # 2. Обработка значений
     sanitized = []
     for row in rows:
         new_row = []
@@ -154,17 +177,19 @@ def sanitize_rows(rows):
             if val is None:
                 new_row.append(null_default(col_types[i]))
             else:
-                # ВАЖНО: убедимся, что datetime не содержит часового пояса, 
-                # если ClickHouse настроен на локальное время, или приведем к нужному формату
                 if isinstance(val, datetime):
-                    # Если нужно убрать tzinfo (наивный datetime), используйте:
                     val = val.replace(tzinfo=None)
                 new_row.append(val)
         sanitized.append(tuple(new_row))
     return sanitized
 
 
-def reload_mart(table_name: str):
+def reload_mart(table_name: str) -> None:
+    """
+    Пересчитывает конкретную витрину данных.
+
+    :param table_name: Имя таблицы в ClickHouse (соответствует ключу в MART_QUERIES).
+    """
     pg_hook = PostgresHook(postgres_conn_id="warehouse_default")
     rows = sanitize_rows(pg_hook.get_records(MART_QUERIES[table_name]))
     client = get_clickhouse_client()
@@ -174,11 +199,16 @@ def reload_mart(table_name: str):
     logger.info("Пересчитано dm.%s: %s rows", table_name, len(rows))
 
 
-def rebuild_all_marts():
+def rebuild_all_marts() -> None:
+    """
+    Пересчитывает все витрины ClickHouse из DDS PostgreSQL.
+
+    :raises Exception: При ошибке подключения или загрузки данных.
+    """
     try:
         for table_name in MART_QUERIES:
             reload_mart(table_name)
-        alert_telegram(f"✓ load_dds_to_clickhouse: пересчитано {len(MART_QUERIES)} витрин", True)
+        alert_telegram(f"✓ load_dds_to_clickhouse: витрины обновлены", True)
     except Exception as exc:
         alert_telegram(f"✗ load_dds_to_clickhouse: {exc}")
         raise

@@ -1,22 +1,60 @@
+"""
+Модуль загрузки данных из RAW-слоя в DDS PostgreSQL.
+
+Этот модуль выполняет:
+1. Чтение необработанных событий из raw.events.
+2. Валидацию через validate_for_dds (utils/validation/dds_models.py).
+3. Upsert измерений и фактов в схему dds.
+4. Маркировку обработанных событий; ошибки DDS → raw.events_invalid с меткой [DDS].
+"""
 import json
 import logging
+from datetime import date, datetime
 
-from utils.validation.dds_models import (
-    DdsDevice,
-    DdsLocation,
-    DdsMarketing,
-    DdsContent,
-    DdsUser,
-)
+from pydantic import ValidationError
+
+from utils.validation.dds_models import validate_for_dds
 
 logger = logging.getLogger("airflow.task")
 
 
+def ensure_dict(data):
+    """Приводит JSONB/строку из Postgres к словарю Python."""
+    if isinstance(data, str):
+        return json.loads(data)
+    return data
+
+
+def parse_changed_at(event_date):
+    """Парсит event_date в TIMESTAMP для fact_subscription_changes."""
+    if isinstance(event_date, datetime):
+        return event_date.replace(tzinfo=None) if event_date.tzinfo else event_date
+    if isinstance(event_date, date):
+        return datetime.combine(event_date, datetime.min.time())
+    text = str(event_date)
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return datetime.strptime(text[:10], "%Y-%m-%d")
+
+
 class DdsLoader:
+    """
+    Загрузчик событий из raw.events в нормализованную схему dds.
+
+    :param cursor: Курсор PostgreSQL (warehouse-postgres).
+    """
+
     def __init__(self, cursor):
         self.cursor = cursor
 
     def fetch_raw_events(self, limit=200):
+        """
+        Возвращает необработанные события из raw.events.
+
+        :param limit: Максимальное число строк за один проход.
+        :return: Список кортежей (event_id, data).
+        """
         self.cursor.execute(
             """
             SELECT event_id, data
@@ -29,21 +67,30 @@ class DdsLoader:
         return self.cursor.fetchall()
 
     def mark_processed(self, event_id):
+        """Помечает событие как обработанное (is_processed = TRUE)."""
         self.cursor.execute(
             "UPDATE raw.events SET is_processed = TRUE WHERE event_id = %s",
             (event_id,),
         )
 
-    def insert_invalid_event(self, data, error_message: str):
+    def insert_invalid_event(self, data, error_message: str, stage: str = "DDS"):
+        """
+        Сохраняет событие с ошибкой трансформации в raw.events_invalid.
+
+        :param data: Исходный JSON события.
+        :param error_message: Текст ошибки.
+        :param stage: Этап пайплайна (RAW или DDS).
+        """
         self.cursor.execute(
             """
             INSERT INTO raw.events_invalid (raw_data, error_message)
             VALUES (%s, %s)
             """,
-            (json.dumps(data), error_message),
+            (json.dumps(data), f"[{stage}] {error_message}"),
         )
 
     def insert_dim_tables(self, marketing, device, loc, content, user):
+        """Upsert записей в dim_marketing, dim_devices, dim_locations, dim_content, dim_users."""
         self.cursor.execute(
             """
             INSERT INTO dds.dim_marketing VALUES (%s, %s, %s)
@@ -92,12 +139,13 @@ class DdsLoader:
         )
 
     def insert_genres(self, content_id, genres):
+        """Добавляет жанры в dim_genres и связи content ↔ genre в link_content_genres."""
         for genre in genres:
             self.cursor.execute(
                 """
                 INSERT INTO dds.dim_genres (genre_name)
                 VALUES (%s)
-                ON CONFLICT DO NOTHING
+                ON CONFLICT (genre_name) DO NOTHING
                 """,
                 (genre,),
             )
@@ -118,6 +166,7 @@ class DdsLoader:
                 )
 
     def insert_fact_tables(self, event, session, content, user, loc, device):
+        """Записывает fact_sessions и fact_events."""
         self.cursor.execute(
             """
             SELECT location_id
@@ -161,6 +210,7 @@ class DdsLoader:
         )
 
     def insert_subscription_change(self, user_id, subscription, event_date):
+        """Фиксирует смену статуса подписки, если new_status отличается от предыдущего."""
         new_status = subscription.get("status", "none")
 
         self.cursor.execute(
@@ -183,39 +233,43 @@ class DdsLoader:
                 (user_id, old_status, new_status, changed_at)
                 VALUES (%s, %s, %s, %s)
                 """,
-                (user_id, old_status, new_status, event_date),
+                (user_id, old_status, new_status, parse_changed_at(event_date)),
             )
 
     def process_event(self, event_id, data) -> bool:
-        try:
-            session = data.get("session") or {}
-            content_data = data.get("content") or {}
-            user_data = data.get("user") or {}
-            subscription = user_data.get("subscription") or {}
+        """
+        Трансформирует одно raw-событие в DDS.
 
-            marketing = DdsMarketing(**(data.get("marketing") or {}))
-            user = DdsUser(
-                user_id=data["user"]["user_id"],
-                email=data["user"]["email"],
-                name=data["user"]["profile"]["name"],
-                birth_date=data["user"]["profile"]["birth_date"],
-                first_touch_campaign_id=data["marketing"]["campaign_id"],
-            )
-            device = DdsDevice(**data["session"]["device"])
-            loc = DdsLocation(**data["session"]["device"]["location"])
-            content = DdsContent(**data["content"])
+        :param event_id: UUID события из raw.events.
+        :param data: JSON-словарь события.
+        :return: True при успехе, False при ошибке (запись уходит в events_invalid).
+        """
+        try:
+            data = ensure_dict(data)
+            inbound = validate_for_dds(data)
+            marketing, device, loc, content, user = inbound.to_dim_models()
+
+            payload = inbound.model_dump(mode="json")
+            session = payload["session"]
+            subscription = payload["user"]["subscription"]
 
             self.insert_dim_tables(marketing, device, loc, content, user)
-            self.insert_genres(content.content_id, content_data.get("genre", []))
-            self.insert_fact_tables(data, session, content, user, loc, device)
+            self.insert_genres(content.content_id, inbound.content.genre)
+            self.insert_fact_tables(payload, session, content, user, loc, device)
             self.insert_subscription_change(
-                str(user.user_id), subscription, data.get("event_date")
+                str(user.user_id), subscription, payload["event_date"]
             )
             self.mark_processed(event_id)
             return True
 
+        except ValidationError as exc:
+            logger.warning("DDS validation failed for %s: %s", event_id, exc)
+            self.insert_invalid_event(data, str(exc), stage="DDS")
+            self.mark_processed(event_id)
+            return False
+
         except Exception as exc:
             logger.warning("DDS transform failed for %s: %s", event_id, exc)
-            self.insert_invalid_event(data, str(exc))
+            self.insert_invalid_event(data, str(exc), stage="DDS")
             self.mark_processed(event_id)
             return False

@@ -13,7 +13,7 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
-    PYTHONPATH: /opt/airflow/utils:/opt/airflow/sql:${PYTHONPATH:-}
+    PYTHONPATH: /opt/airflow:/opt/airflow/dags:${PYTHONPATH:-}
     TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
     TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
     POSTGRES_USER: ${POSTGRES_USER}
@@ -26,6 +26,7 @@ x-airflow-common:
     CLICKHOUSE_USER: ${CLICKHOUSE_USER}
     CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
     CLICKHOUSE_DB: ${CLICKHOUSE_DB}
+    MINIO_BUCKET: ${MINIO_BUCKET}
 
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
 
@@ -121,13 +122,15 @@ services:
     depends_on:
       - minio
     environment:
-      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET}
       TMDB_API_KEY: ${TMDB_API_KEY}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      RAW_INVALID_DATA_RATE: ${RAW_INVALID_DATA_RATE:-0.025}
+      DDS_INVALID_DATA_RATE: ${DDS_INVALID_DATA_RATE:-0.025}
     restart: always
 
   postgres:
@@ -293,8 +296,8 @@ services:
           echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
           echo
         fi
-        mkdir -p /sources/logs /sources/dags /sources/plugins
-        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
+        mkdir -p /sources/logs /sources/dags 
+        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags}
         /entrypoint airflow version
 
     environment:

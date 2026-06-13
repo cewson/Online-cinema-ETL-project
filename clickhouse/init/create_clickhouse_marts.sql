@@ -1,5 +1,19 @@
+-- =============================================================================
+-- Инициализация витрин данных ClickHouse (схема dm)
+--
+-- Этот скрипт создаёт аналитические витрины:
+-- 1. mart_events — детальный лог событий с атрибутами пользователя и контента.
+-- 2. mart_sessions — агрегация событий по сессиям.
+-- 3. mart_content_performance — метрики просмотров по фильмам.
+-- 4. mart_subscription_changes — история смен статуса подписки.
+--
+-- Заполнение: DAG load_dds_to_clickhouse (полный пересчёт TRUNCATE + INSERT).
+-- Визуализация: Metabase (metabase/queries/).
+-- =============================================================================
+
 CREATE DATABASE IF NOT EXISTS dm;
 
+-- Детальный лог пользовательских действий
 CREATE TABLE IF NOT EXISTS dm.mart_events (
     event_id UUID,
     session_id UUID,
@@ -23,6 +37,7 @@ CREATE TABLE IF NOT EXISTS dm.mart_events (
 ) ENGINE = MergeTree()
 ORDER BY (event_date, event_id);
 
+-- Агрегация действий внутри одной сессии
 CREATE TABLE IF NOT EXISTS dm.mart_sessions (
     session_id UUID,
     user_id UUID,
@@ -38,6 +53,7 @@ CREATE TABLE IF NOT EXISTS dm.mart_sessions (
 ) ENGINE = MergeTree()
 ORDER BY (session_id);
 
+-- Метрики эффективности контента
 CREATE TABLE IF NOT EXISTS dm.mart_content_performance (
     content_id Int32,
     title String,
@@ -50,6 +66,7 @@ CREATE TABLE IF NOT EXISTS dm.mart_content_performance (
 ) ENGINE = MergeTree()
 ORDER BY (content_id);
 
+-- История изменений подписок
 CREATE TABLE IF NOT EXISTS dm.mart_subscription_changes (
     change_id Int32,
     user_id UUID,
