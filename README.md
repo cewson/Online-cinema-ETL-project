@@ -86,7 +86,6 @@ ____
 │       └── dds_models.py          # Pydantic: этап raw → dds
 ├── postgres/init/                 # Схемы raw и dds
 ├── clickhouse/init/               # Схема dm и витрины
-├── metabase/queries/              # SQL для дашбордов Metabase
 └── docker-compose.yml
 ```
 
