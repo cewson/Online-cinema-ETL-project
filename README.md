@@ -105,7 +105,7 @@ DAG читает JSON из MinIO, валидирует структуру чер
 
 *`2_load_raw_to_dds.py`*
 
-DAG берёт необработанные события из `raw.events`, выполняет бизнес-валидацию (`validate_for_dds`) и загружает данные в звёздную схему PostgreSQL через `DdsLoader`.
+DAG берёт необработанные события из `raw.events`, выполняет бизнес-валидацию и загружает данные в звёздную схему PostgreSQL через `DdsLoader`.
 
 **Результат:** нормализованные измерения `dds.dim_*` и факты `dds.fact_*`; DDS-ошибки — в `raw.events_invalid` с меткой `[DDS]`. Публикуется Dataset `DDS_UPDATED`.
 
