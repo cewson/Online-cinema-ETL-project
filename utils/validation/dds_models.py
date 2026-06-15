@@ -22,8 +22,7 @@ MIN_RELEASE_YEAR = 1888
 SubscriptionStatus = Literal["active", "trial", "paused"]
 
 
-# --- Модели таблиц DDS (dim / fact) ---
-
+# Модели таблиц DDS 
 
 class DdsGenre(BaseModel):
     """Справочник жанров (dim_genres)."""
@@ -113,7 +112,7 @@ class DdsLinkContentGenre(BaseModel):
     genre_id: int
 
 
-# --- Входящее событие из raw.events (этап raw → dds) ---
+# Входящее событие из raw.events (этап raw → dds)
 
 
 class DdsInboundProfile(BaseModel):
@@ -129,7 +128,7 @@ class DdsInboundProfile(BaseModel):
             date.fromisoformat(str(value)[:10])
         except ValueError as exc:
             raise ValueError(
-                f"birth_date must be ISO date (YYYY-MM-DD), got: {value!r}"
+                f"birth_date должна содержать дату (YYYY-MM-DD): {value!r}"
             ) from exc
         return value
 
@@ -183,8 +182,8 @@ class DdsInboundContent(BaseModel):
         max_year = datetime.now().year + 2
         if not MIN_RELEASE_YEAR <= value <= max_year:
             raise ValueError(
-                f"release_year must be between {MIN_RELEASE_YEAR} and {max_year}, "
-                f"got: {value!r}"
+                f"release_year должен быть между {MIN_RELEASE_YEAR} и {max_year}"
+                f": {value!r}"
             )
         return value
 
@@ -193,10 +192,10 @@ class DdsInboundContent(BaseModel):
     def validate_genres(cls, value: List[str]) -> List[str]:
         for genre in value:
             if not str(genre).strip():
-                raise ValueError("genre must not contain empty values")
+                raise ValueError("genre не может быть пустым")
             if len(str(genre)) > MAX_VARCHAR_50:
                 raise ValueError(
-                    f"genre name exceeds {MAX_VARCHAR_50} chars: {genre!r}"
+                    f"Слишком длинное genre"
                 )
         return value
 
@@ -204,7 +203,7 @@ class DdsInboundContent(BaseModel):
     def validate_playback_position(self) -> DdsInboundContent:
         if self.position_sec > self.duration_sec:
             raise ValueError(
-                f"position_sec ({self.position_sec}) cannot exceed "
+                f"position_sec ({self.position_sec}) не может превышать "
                 f"duration_sec ({self.duration_sec})"
             )
         return self

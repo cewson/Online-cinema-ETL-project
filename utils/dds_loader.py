@@ -139,7 +139,7 @@ class DdsLoader:
         )
 
     def insert_genres(self, content_id, genres):
-        """Добавляет жанры в dim_genres и связи content ↔ genre в link_content_genres."""
+        """Добавляет жанры в dim_genres и связи content - genre в link_content_genres."""
         for genre in genres:
             self.cursor.execute(
                 """
