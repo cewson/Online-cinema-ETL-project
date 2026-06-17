@@ -35,8 +35,8 @@ class DdsDevice(BaseModel):
     """Справочник устройств (dim_devices)."""
 
     device_id: str = Field(max_length=MAX_VARCHAR_50)
-    type: str = Field(max_length=50)
-    os: str = Field(max_length=50)
+    type: str = Field(max_length=MAX_VARCHAR_50)
+    os: str = Field(max_length=MAX_VARCHAR_50)
     model: str = Field(max_length=100)
 
 
@@ -45,7 +45,7 @@ class DdsLocation(BaseModel):
 
     country: str = Field(max_length=100)
     city: str = Field(max_length=100)
-    timezone: str = Field(max_length=50)
+    timezone: str = Field(max_length=MAX_VARCHAR_50)
 
 
 class DdsMarketing(BaseModel):
@@ -53,7 +53,7 @@ class DdsMarketing(BaseModel):
 
     campaign_id: str = Field(max_length=MAX_VARCHAR_50)
     campaign_name: str = Field(max_length=100)
-    source: str = Field(max_length=50)
+    source: str = Field(max_length=MAX_VARCHAR_50)
 
 
 class DdsContent(BaseModel):
@@ -164,7 +164,7 @@ class DdsInboundSession(BaseModel):
 
 
 class DdsInboundContent(BaseModel):
-    """Контент при загрузке в DDS (расширяет dim_content полями просмотра)."""
+    """Контент при загрузке в DDS."""
 
     content_id: int
     title: str

@@ -10,13 +10,10 @@
 import json
 import logging
 from datetime import date, datetime
-
 from pydantic import ValidationError
-
 from utils.validation.dds_models import validate_for_dds
 
-logger = logging.getLogger("airflow.task")
-
+logger = logging.getLogger(__name__)
 
 def ensure_dict(data):
     """Приводит JSONB/строку из Postgres к словарю Python."""
@@ -263,13 +260,13 @@ class DdsLoader:
             return True
 
         except ValidationError as exc:
-            logger.warning("DDS validation failed for %s: %s", event_id, exc)
+            logger.warning("Ошибка валидации DDS %s: %s", event_id, exc)
             self.insert_invalid_event(data, str(exc), stage="DDS")
             self.mark_processed(event_id)
             return False
 
         except Exception as exc:
-            logger.warning("DDS transform failed for %s: %s", event_id, exc)
+            logger.warning("Ошибка преобразования DDS %s: %s", event_id, exc)
             self.insert_invalid_event(data, str(exc), stage="DDS")
             self.mark_processed(event_id)
             return False

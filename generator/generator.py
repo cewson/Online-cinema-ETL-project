@@ -15,20 +15,10 @@
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.
 """
 
-import copy
-import io
-import json
-import logging
-import os
-import signal
-import sys
-import time
-import uuid
+import copy, io, json, os, sys, time, uuid, logging, signal, requests
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice, choices, randint, random
-
-import requests
 from faker import Faker
 from minio import Minio
 

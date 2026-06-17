@@ -12,7 +12,7 @@ DAG для трансформации данных из слоя RAW в слой
 import logging
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator, ShortCircuitOperator
+from airflow.operators.python import PythonOperator, ShortCircuitOperator, EmptyOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from datetime import datetime, timedelta
 
@@ -80,13 +80,6 @@ def dds_has_new_data(**context) -> bool:
     return False
 
 
-def mark_dds_updated():
-    """
-    Финальная задача, помечающая, что слой DDS был обновлен.
-    """
-    logger.info("Dataset DDS_UPDATED опубликован — запустится load_dds_to_clickhouse")
-
-
 default_args = {
     "owner": "vlada",
     "retries": 2,
@@ -113,10 +106,9 @@ with DAG(
         python_callable=dds_has_new_data,
     )
 
-    publish_dds_dataset = PythonOperator(
+    publish_dds_dataset = EmptyOperator(
         task_id="publish_dds_dataset",
-        python_callable=mark_dds_updated,
-        outlets=[DDS_UPDATED],  
+        outlets=[DDS_UPDATED]
     )
     
     task_process >> check_dds_updated >> publish_dds_dataset 

@@ -24,8 +24,8 @@ from utils.tg_alert import alert_telegram
 logger = logging.getLogger(__name__)
 
 # SQL-запросы для формирования витрин (Data Marts).
-# Источник: DDS PostgreSQL → ClickHouse dm.*
-# Каждый ключ соответствует таблице в clickhouse/init/create_clickhouse_marts.sql
+# Источник: DDS PostgreSQL - ClickHouse dm.*
+# Каждый ключ соответствует таблице в clickhouse
 MART_QUERIES = {
     "mart_events": """
         SELECT
@@ -188,7 +188,7 @@ def reload_mart(table_name: str) -> None:
     """
     Пересчитывает конкретную витрину данных.
 
-    :param table_name: Имя таблицы в ClickHouse (соответствует ключу в MART_QUERIES).
+    :param table_name: Имя таблицы в ClickHouse.
     """
     pg_hook = PostgresHook(postgres_conn_id="warehouse_default")
     rows = sanitize_rows(pg_hook.get_records(MART_QUERIES[table_name]))
