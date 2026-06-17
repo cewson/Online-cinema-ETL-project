@@ -3,13 +3,13 @@ FROM python:3.10-slim
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Сначала копируем только файл с зависимостями (это ускоряет сборку)
+# Сначала копируем файл с зависимостями
 COPY requirements.txt .
 
 # Устанавливаем их
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Теперь копируем сам код
+# Копируем код
 COPY generator.py .
 
 # Запускаем

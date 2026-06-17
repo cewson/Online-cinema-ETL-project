@@ -112,8 +112,6 @@ class DdsLinkContentGenre(BaseModel):
     genre_id: int
 
 
-# Входящее событие из raw.events (этап raw → dds)
-
 
 class DdsInboundProfile(BaseModel):
     """Профиль пользователя при загрузке в DDS."""
