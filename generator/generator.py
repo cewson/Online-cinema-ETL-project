@@ -38,7 +38,6 @@ for path in (Path(__file__).resolve().parent, Path(__file__).resolve().parent.pa
 
 from utils.tg_alert import alert_telegram
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 fake = Faker("ru_RU")
 
@@ -87,7 +86,7 @@ MALFORMED_PAYLOAD = {
     "note": "missing user, session, content, marketing",
 }
 
-# Ломают схему RawEvent → отсекаются на этапе minio → raw
+# Ломают схему RawEvent - отсекаются на этапе minio - raw
 RAW_CORRUPTIONS = [
     lambda e: e.pop("user"),
     lambda e: e["user"].__setitem__("email", "not-an-email"),
@@ -98,7 +97,7 @@ RAW_CORRUPTIONS = [
     lambda e: e["marketing"].pop("campaign_id"),
 ]
 
-# Проходят RawEvent, но не проходят validate_for_dds → отсекаются на этапе raw → dds
+# Проходят RawEvent, но не проходят validate_for_dds - отсекаются на этапе raw - dds
 DDS_CORRUPTIONS = [
     lambda e: e["user"]["profile"].__setitem__("birth_date", "not-a-date"),
     lambda e: e["marketing"].__setitem__("campaign_id", "x" * 60),
@@ -124,14 +123,31 @@ minio = Minio(
 
 
 def utc_expires(days: int | None = None) -> str:
+    """
+    Возвращает дату истечения подписки в ISO-формате (UTC).
+
+    :param days: Число дней до истечения; если None — случайное от 1 до 365.
+    :return: Строка datetime в ISO-формате.
+    """
     return (datetime.now(timezone.utc) + timedelta(days=days or randint(1, 365))).isoformat()
 
 
 def random_date(days_back: int = 30) -> str:
+    """
+    Генерирует случайную дату в прошлом для поля event_date.
+
+    :param days_back: Максимальное число дней назад от текущей даты.
+    :return: Дата в формате YYYY-MM-DD.
+    """
     return (datetime.now(timezone.utc) - timedelta(days=randint(0, days_back))).strftime("%Y-%m-%d")
 
 
 def new_device() -> dict:
+    """
+    Создаёт словарь устройства просмотра с геолокацией.
+
+    :return: device_id, type, os, model и location (country, city, timezone).
+    """
     return {
         "device_id": f"dev-{uuid.uuid4().hex[:12]}",
         "type": choice(["smart_tv", "mobile", "desktop"]),
@@ -142,6 +158,11 @@ def new_device() -> dict:
 
 
 def new_user() -> dict:
+    """
+    Создаёт нового пользователя с профилем, подпиской и first-touch маркетингом.
+
+    :return: user_id, email, profile, subscription (status, type, expires_at), marketing.
+    """
     return {
         "user_id": str(uuid.uuid4()),
         "email": fake.email(),
@@ -159,14 +180,23 @@ def new_user() -> dict:
     }
 
 
-def content_item(content_id: int, title: str, genres: list[str], **extra) -> dict:
+def content_item(content_id: int, title: str, genres: list[str], director=None, release_year=None, duration_sec=None) -> dict:
+    """
+    Формирует запись контента (фильма) для CONTENT_LIBRARY и событий.
+
+    :param content_id: Идентификатор фильма (из TMDB или fallback).
+    :param title: Название фильма.
+    :param genres: Список жанров; при пустом списке подставляется ['Drama'].
+    :param extra: Опционально director, release_year, duration_sec.
+    :return: Словарь полей контента для включения в JSON-событие.
+    """
     return {
         "content_id": content_id,
         "title": title,
         "genres": genres or ["Drama"],
-        "director": extra.get("director", fake.name()),
-        "release_year": extra.get("release_year", randint(1990, 2025)),
-        "duration_sec": extra.get("duration_sec", randint(3600, 9000)),
+        "director": director or fake.name(),
+        "release_year": release_year or randint(1990, 2025),
+        "duration_sec": duration_sec or randint(3600, 9000)
     }
 
 
@@ -200,7 +230,9 @@ def get_or_create_user() -> dict:
 
 
 def fetch_content_from_tmdb() -> None:
-    """Загружает популярные фильмы из TMDB; при ошибке — fallback-контент."""
+    """
+    Загружает популярные фильмы из TMDB; при ошибке — fallback-контент.
+    """
     url = f"https://api.themoviedb.org/3/movie/popular?api_key={TMDB_API_KEY}&language=ru-RU"
     try:
         for movie in requests.get(url, timeout=10).json().get("results", []):
@@ -213,6 +245,15 @@ def fetch_content_from_tmdb() -> None:
 
 
 def pick_event_type(session: dict, session_id: str) -> str | None:
+    """
+    Определяет тип следующего события в сессии просмотра.
+
+    Первое событие — content_view_started, последнее — content_completed.
+
+    :param session: Состояние сессии из ACTIVE_SESSIONS (events_count, max_events).
+    :param session_id: UUID сессии; нужен для удаления при churn.
+    :return: event_type или None, если сессия прервана досрочно.
+    """
     count, limit = session["events_count"], session["max_events"]
     if count == 1:
         return "content_view_started"
@@ -225,6 +266,13 @@ def pick_event_type(session: dict, session_id: str) -> str | None:
 
 
 def build_event(session: dict, event_type: str) -> dict:
+    """
+    Собирает полный JSON-событие по схеме RawEvent.
+
+    :param session: Состояние сессии: user, content, session_data, events_count.
+    :param event_type: Тип события (content_view_started, content_paused и т.д.).
+    :return: Словарь события для загрузки в MinIO и валидации RawEvent.
+    """
     user, content, meta = session["user"], session["content"], session["session_data"]
     return {
         "event_id": str(uuid.uuid4()),
@@ -234,15 +282,24 @@ def build_event(session: dict, event_type: str) -> dict:
         "user": {k: user[k] for k in ("user_id", "email", "profile", "subscription")},
         "session": {k: meta[k] for k in ("session_id", "ip_address", "device")},
         "content": {
-            **{k: content[k] for k in ("content_id", "title", "director", "release_year", "duration_sec")},
+            "content_id": content["content_id"],
+            "title": content["title"],
+            "director": content["director"],
+            "release_year": content["release_year"],
+            "duration_sec": content["duration_sec"],
             "genre": content["genres"],
-            "position_sec": session["events_count"] * 500,
+            "position_sec": session["events_count"] * 500
         },
         "marketing": user["marketing"],
     }
 
 
 def start_session() -> str:
+    """
+    Создаёт новую сессию просмотра и сохраняет её в ACTIVE_SESSIONS.
+
+    :return: session_id — UUID новой сессии.
+    """
     session_id = str(uuid.uuid4())
     ACTIVE_SESSIONS[session_id] = {
         "user": get_or_create_user(),
@@ -325,7 +382,7 @@ def upload_event(event: dict, *, invalid_stage: str | None) -> None:
 
 
 def main() -> None:
-    """Основной цикл генерации: валидные и невалидные события → MinIO."""
+    """Основной цикл генерации: валидные и невалидные события - MinIO."""
     if not minio.bucket_exists(MINIO_BUCKET):
         minio.make_bucket(MINIO_BUCKET)
     fetch_content_from_tmdb()
