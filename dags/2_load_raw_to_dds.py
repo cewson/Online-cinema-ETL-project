@@ -12,7 +12,8 @@ DAG для трансформации данных из слоя RAW в слой
 import logging
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator, ShortCircuitOperator, EmptyOperator
+from airflow.operators.python import PythonOperator, ShortCircuitOperator
+from airflow.operators.empty import EmptyOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from datetime import datetime, timedelta
 

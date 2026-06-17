@@ -92,7 +92,7 @@ MART_QUERIES = {
             COALESCE(dc.director, ''),
             COALESCE(dc.release_year, 0),
             COALESCE(string_agg(DISTINCT g.genre_name, ', '), ''),
-            COUNT(fe.event_id)::int,
+            COUNT(DISTINCT fe.event_id)::int,
             COUNT(DISTINCT fs.user_id)::int,
             COUNT(DISTINCT CASE WHEN fe.event_type = 'content_view_started' THEN fe.event_id END)::int
         FROM dds.dim_content dc

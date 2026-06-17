@@ -28,6 +28,9 @@ for path in (Path(__file__).resolve().parent, Path(__file__).resolve().parent.pa
 
 from utils.tg_alert import alert_telegram
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 fake = Faker("ru_RU")
 
